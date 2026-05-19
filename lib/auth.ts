@@ -1,3 +1,4 @@
+import { NextRequest } from 'next/server';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
@@ -67,4 +68,14 @@ export function extractTokenFromHeader(authHeader: string | null): string | null
     return null;
   }
   return authHeader.substring(7);
+}
+
+/**
+ * Extracts and verifies the JWT from a request's Authorization header.
+ * Returns the token payload, or `null` if the token is missing or invalid.
+ */
+export function getAuthUser(req: NextRequest): TokenPayload | null {
+  const token = extractTokenFromHeader(req.headers.get('authorization'));
+  if (!token) return null;
+  return verifyAccessToken(token);
 }
