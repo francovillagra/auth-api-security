@@ -43,3 +43,4 @@ next-env.d.ts
 # Ignorar base de datos SQLite local
 prisma/*.db
 prisma/*.db-journal
+dev.db
