@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+/** Registration payload: email, strong password, and optional display name. */
 export const registerSchema = z.object({
   email: z.string().email('Invalid email format'),
   password: z
@@ -13,6 +14,7 @@ export const registerSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 
+/** Login payload: email and password (no strength rules — just presence). */
 export const loginSchema = z.object({
   email: z.string().email('Invalid email format'),
   password: z.string().min(1, 'Password is required'),
@@ -20,12 +22,14 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** Refresh token rotation payload. */
 export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 
+/** Post creation payload. `published` defaults to `false` (draft). */
 export const createPostSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Title too long'),
   content: z.string().min(1, 'Content is required'),

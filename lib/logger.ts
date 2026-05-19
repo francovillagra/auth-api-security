@@ -6,6 +6,11 @@ const logFormat = printf(({ level, message, timestamp, stack }) => {
   return `${timestamp} [${level}]: ${stack || message}`;
 });
 
+/**
+ * Winston logger instance.
+ * - Development: `debug` level, colorized console output.
+ * - Production: `info` level, plain console output.
+ */
 export const logger = winston.createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   format: combine(
@@ -20,6 +25,7 @@ export const logger = winston.createLogger({
   ],
 });
 
+/** Typed convenience wrapper around the Winston logger. */
 export const log = {
   info: (message: string) => logger.info(message),
   error: (message: string, error?: Error) => logger.error(message, error),
