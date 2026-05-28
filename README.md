@@ -1,4 +1,4 @@
-<img src="./assets/banner.png" alt="Auth API Security" width="700" />
+<img src="./assets/banner.png" alt="Auth API Security" style="width:100%; max-height:400px" />
 
 # Auth API Security
 
