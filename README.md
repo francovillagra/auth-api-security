@@ -1,4 +1,4 @@
-![Auth API Security](./assets/banner.png)
+<img src="./assets/banner.png" alt="Auth API Security" width="700" />
 
 # Auth API Security
 
