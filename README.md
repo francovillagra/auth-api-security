@@ -1,3 +1,5 @@
+![Auth API Security](./assets/banner.png)
+
 # Auth API Security
 
 API REST de producción construida con **Next.js 16**, **TypeScript** y **Prisma**, con autenticación JWT, rate limiting por IP, múltiples capas de seguridad y logging estructurado.
