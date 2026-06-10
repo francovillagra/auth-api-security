@@ -46,3 +46,5 @@ next-env.d.ts
 prisma/*.db
 prisma/*.db-journal
 dev.db
+CLAUDE.md
+CLAUDE.md
