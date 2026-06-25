@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { Role } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
@@ -13,6 +14,7 @@ if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
 export interface TokenPayload {
   userId: string;
   email: string;
+  role: Role;
 }
 
 /** Returns the bcrypt hash of `password` using 10 salt rounds. */

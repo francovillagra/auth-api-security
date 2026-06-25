@@ -27,10 +27,10 @@ async function handler(req: NextRequest) {
 
   const user = await prisma.user.create({
     data: { email, password: hashedPassword, name },
-    select: { id: true, email: true, name: true, createdAt: true },
+    select: { id: true, email: true, name: true, role: true, createdAt: true },
   });
 
-  const payload = { userId: user.id, email: user.email };
+  const payload = { userId: user.id, email: user.email, role: user.role };
   const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
 

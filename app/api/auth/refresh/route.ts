@@ -29,7 +29,7 @@ async function handler(req: NextRequest) {
     return NextResponse.json({ error: 'User not found' }, { status: 401 });
   }
 
-  const newPayload = { userId: user.id, email: user.email };
+  const newPayload = { userId: user.id, email: user.email, role: user.role };
   const accessToken = generateAccessToken(newPayload);
   const newRefreshToken = generateRefreshToken(newPayload);
 

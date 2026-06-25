@@ -12,7 +12,7 @@ async function handler(req: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: authUser.userId },
-    select: { id: true, email: true, name: true, createdAt: true, updatedAt: true },
+    select: { id: true, email: true, name: true, role: true, createdAt: true, updatedAt: true },
   });
 
   if (!user) {

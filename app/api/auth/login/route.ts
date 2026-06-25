@@ -25,14 +25,22 @@ async function handler(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
   }
 
-  const payload = { userId: user.id, email: user.email };
+  // role incluido en el payload — necesario para que requireRole() funcione
+  // sin tener que volver a consultar la DB en cada request protegido
+  const payload = { userId: user.id, email: user.email, role: user.role };
   const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
 
   log.info(`User logged in: ${email}`);
 
   return NextResponse.json({
-    user: { id: user.id, email: user.email, name: user.name, createdAt: user.createdAt },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      createdAt: user.createdAt,
+    },
     accessToken,
     refreshToken,
   });
