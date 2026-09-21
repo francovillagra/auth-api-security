@@ -24,7 +24,6 @@ export async function GET(req: NextRequest) {
         email: true,
         name: true,
         role: true,
-        emailVerified: true,
         createdAt: true,
         updatedAt: true,
         // password: false ← excluido explícitamente, nunca se expone
