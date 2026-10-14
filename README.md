@@ -17,6 +17,7 @@ Incluye todo lo que normalmente se agrega a último momento: tokens de acceso y 
 ## Features principales
 
 - **Autenticación JWT** — Access tokens (15 min) + refresh tokens (7 días), firmados con HS256 (algoritmo fijado) y con emisor, audiencia y `jti`. Un refresh token no sirve como access token ni al revés
+- **Refresh tokens rotativos y revocables** — Cada refresh token se canjea una sola vez; reutilizar uno ya canjeado cierra la sesión entera. Hay logout (de una sesión o de todas), tope de 30 días por sesión y máximo de 10 sesiones activas por usuario
 - **Secretos validados al arrancar** — La app no inicia si `JWT_SECRET` / `JWT_REFRESH_SECRET` faltan, tienen menos de 32 caracteres, parecen valores de ejemplo o son iguales entre sí
 - **Roles (RBAC)** — `USER` y `ADMIN`. Las rutas de admin leen el rol **de la base en cada pedido**: un admin degradado o eliminado pierde el acceso al instante
 - **Seguridad de contraseñas** — Hash bcrypt con 10 salt rounds (máximo 72 bytes, el límite real de bcrypt), nunca se almacena ni expone en texto plano
@@ -27,7 +28,7 @@ Incluye todo lo que normalmente se agrega a último momento: tokens de acceso y 
 - **Validación con Zod** — Schemas tipados con errores por campo, emails normalizados (minúsculas), tamaños máximos y cuerpo limitado a 8 KB
 - **Logging estructurado** — Winston con colores en dev, niveles por entorno. Los logs llevan ids de usuario, no emails ni contraseñas
 - **Request logging** — Método, ruta, status y duración en cada respuesta; los errores inesperados responden un 500 genérico
-- **Prisma ORM** — PostgreSQL
+- **Prisma ORM** — PostgreSQL, con migraciones versionadas
 
 ---
 
@@ -43,7 +44,7 @@ Incluye todo lo que normalmente se agrega a último momento: tokens de acceso y 
 | Validación | Zod |
 | Rate limiting | @upstash/ratelimit + @upstash/redis |
 | Logging | Winston |
-| Tests | Vitest (Prisma falso en memoria) |
+| Tests | Vitest: unitarios (Prisma falso en memoria) e integración (PostgreSQL real) |
 
 ---
 
@@ -56,7 +57,8 @@ auth-api-security/
 │   ├── auth/
 │   │   ├── login/route.ts           # POST  /api/auth/login
 │   │   ├── register/route.ts        # POST  /api/auth/register
-│   │   └── refresh/route.ts         # POST  /api/auth/refresh
+│   │   ├── refresh/route.ts         # POST  /api/auth/refresh      ← canje de un solo uso
+│   │   └── logout/route.ts          # POST  /api/auth/logout
 │   ├── users/
 │   │   └── me/route.ts              # GET   /api/users/me          ← protegido
 │   └── admin/users/
@@ -68,6 +70,7 @@ auth-api-security/
 │   ├── secrets.ts                   # Validación de JWT_SECRET / JWT_REFRESH_SECRET al arrancar
 │   ├── rbac.ts                      # requireRole(): 401/403 con el rol leído de la base
 │   ├── http.ts                      # parseJsonBody(): Content-Type, tamaño, JSON y Zod → 415/413/400
+│   ├── refresh-tokens.ts            # sesiones: canje, detección de reutilización, logout, límite de sesiones
 │   ├── users.ts                     # búsqueda de usuario por email normalizado
 │   ├── db.ts                        # Prisma client singleton (hot-reload safe)
 │   ├── logger.ts                    # Instancia Winston + wrapper tipado
@@ -75,10 +78,11 @@ auth-api-security/
 │   └── validations.ts               # Schemas Zod: register, login, refresh
 │
 ├── prisma/
-│   ├── schema.prisma                # Modelos: User (y Scan, heredado y sin uso)
-│   └── migrations/                  # ⚠ Historial SQLite original: ver "Limitaciones conocidas"
+│   ├── schema.prisma                # Modelos: User y RefreshToken
+│   └── migrations/                  # PostgreSQL: baseline + refresh_tokens
 │
-├── tests/                           # Vitest: tokens, secretos, rutas, proxy y headers
+├── tests/                           # Vitest: tokens, secretos, rutas, sesiones, proxy y headers (Prisma falso)
+│   └── integration/                 # Las mismas rutas contra PostgreSQL real (npm run test:integration)
 ├── proxy.ts                         # Proxy de Next (Node.js): rate limiting, guardia de /api/users y CORS
 ├── next.config.ts                   # Security headers
 └── .env                             # Variables de entorno (no commiteado)
@@ -142,13 +146,13 @@ Editá `.env` con tus valores (ver sección Variables de entorno). **`JWT_SECRET
 
 ### 4. Crear la base de datos
 
-Necesitás una base PostgreSQL (`DATABASE_URL` en `.env`). Para crear las tablas a partir del schema:
+Necesitás una base PostgreSQL (`DATABASE_URL` en `.env`). Para una base **nueva**, las migraciones crean todas las tablas:
 
 ```bash
-npx prisma db push
+npx prisma migrate deploy
 ```
 
-> Las carpetas de `prisma/migrations` son del primer esquema (SQLite) y no se pueden aplicar sobre PostgreSQL; hasta reemplazarlas se usa `db push`.
+> ¿Ya tenés una base creada con una versión anterior (con la tabla `users` pero sin `refresh_tokens`)? Mirá [Base de datos existente](#base-de-datos-existente).
 
 ### 5. Iniciar el servidor
 
@@ -256,7 +260,7 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 ### `POST /api/auth/refresh`
 
-Devuelve un par de tokens nuevo a cambio de un refresh token válido. El rol del access token nuevo sale de la base. ⚠ El refresh token anterior **sigue siendo válido hasta que vence** (ver [Limitaciones conocidas](#limitaciones-conocidas)).
+Canjea un refresh token por un par nuevo. **Cada refresh token sirve una sola vez**: al canjearlo queda revocado y el nuevo pertenece a la misma sesión. Si alguien presenta un token que ya se canjeó (el cliente legítimo o quien lo copió), se cierra la sesión entera y hay que volver a iniciar sesión. El rol del access token nuevo sale de la base.
 
 **cURL:**
 ```bash
@@ -277,8 +281,32 @@ curl -X POST http://localhost:3000/api/auth/refresh \
 |---|---|
 | `200` | Tokens renovados |
 | `400` | Validación fallida o JSON inválido |
-| `401` | Token inválido, expirado o usuario eliminado (mismo mensaje en los tres casos) |
+| `401` | Token inválido, vencido, ya usado, de una sesión cerrada o de un usuario eliminado (siempre el mismo mensaje) |
 | `429` | Rate limit excedido |
+
+> Hay que guardar el refresh token nuevo y descartar el viejo, y **no lanzar dos renovaciones a la vez con el mismo token** (por ejemplo desde dos pestañas): la segunda es indistinguible de un robo y cierra la sesión.
+
+---
+
+### `POST /api/auth/logout`
+
+Cierra la sesión a la que pertenece el refresh token. Con `"everywhere": true` cierra todas las sesiones del usuario (hace falta un refresh token vigente). Es idempotente y responde `204` aunque el token sea inválido, vencido o ya revocado, para no confirmar si un token era válido.
+
+**cURL:**
+```bash
+curl -X POST http://localhost:3000/api/auth/logout \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"<jwt>","everywhere":false}'
+```
+
+| Código | Causa |
+|---|---|
+| `204` | Sesión cerrada (o no había nada que cerrar) |
+| `400` | Falta `refreshToken`, `everywhere` no es booleano o JSON inválido |
+| `413` / `415` | Cuerpo demasiado grande / Content-Type incorrecto |
+| `429` | Rate limit excedido |
+
+> El **access token** ya emitido sigue siendo válido hasta que vence (15 minutos): lo que se revoca es la capacidad de renovarlo.
 
 ---
 
@@ -343,7 +371,7 @@ Cambia el rol de un usuario. Body: `{ "role": "ADMIN" }` o `{ "role": "USER" }`.
 
 Primer filtro antes de que el request llegue a los route handlers (en Next 16 corre en el runtime de Node.js):
 
-- **Rate limiting por IP**: ventana deslizante de 5 req/10s sobre `/api/auth/*` (un solo contador para login, registro y refresh). Usa Upstash Redis si está configurado; si no, o si Redis falla, usa un `Map` en memoria. Responde `429` con `Retry-After` y `X-RateLimit-*`.
+- **Rate limiting por IP**: ventana deslizante de 5 req/10s sobre `/api/auth/*` (un solo contador para login, registro, refresh y logout). Usa Upstash Redis si está configurado; si no, o si Redis falla, usa un `Map` en memoria. Responde `429` con `Retry-After` y `X-RateLimit-*`.
 - **IP del cliente**: se toma `x-real-ip` (que fija Vercel); si no existe, el **último** valor de `x-forwarded-for`, que es el que agregó el proxy de confianza (el primero lo puede escribir cualquiera). Si publicás el servicio detrás de otro proxy, revisá este dato.
 - **Auth guard**: requests a `/api/users/*` sin `Authorization: Bearer ...` reciben `401` sin tocar el route handler.
 - **CORS**: solo se devuelven headers `Access-Control-*` a los orígenes listados en `CORS_ORIGIN`; el preflight incluye `PATCH`. Siempre se agrega `Vary: Origin`.
@@ -377,6 +405,7 @@ Zod valida cada body antes de tocar la DB, con tamaños máximos (email 254, nom
 ### Capa 4 — JWT, contraseñas y roles (`lib/auth.ts`, `lib/secrets.ts`, `lib/rbac.ts`)
 
 - Access tokens: **15 minutos**. Refresh tokens: **7 días**, con `jti` único (dos tokens nunca son idénticos)
+- **Sesiones** (`lib/refresh-tokens.ts`): cada login abre una sesión (una familia de refresh tokens). El canje es una transacción que marca el token como usado solo si sigue vigente (`UPDATE … WHERE revokedAt IS NULL`) y emite el siguiente; si dos pedidos llegan a la vez con el mismo token, gana uno y la sesión se cierra. En la base se guarda solo el `jti`, no el token. Una sesión vive como máximo **30 días** aunque se renueve, cada usuario tiene hasta **10 sesiones activas** (la que hace más tiempo no se renueva es la que se cierra) y los tokens vencidos se borran al iniciar sesión
 - Algoritmo fijado a **HS256** al verificar, y verificación de emisor y audiencia: un refresh token no puede usarse como access token aunque los secretos se reutilicen por error
 - Secretos de **32+ caracteres**, distintos entre sí y sin aspecto de valor de ejemplo; si no, la app no arranca (el mensaje de error nunca muestra el secreto)
 - Contraseñas: **bcrypt 10 rounds**, nunca retornadas en respuestas
@@ -396,25 +425,38 @@ Zod valida cada body antes de tocar la DB, con tamaños máximos (email 254, nom
 
 Lo que esta API **todavía no hace** (para que nadie lo dé por hecho):
 
-- **Los refresh tokens no se revocan.** Al renovar o hacer logout, el token anterior sigue siendo válido hasta que vence (7 días). No existe `logout`. Un token robado se puede usar hasta entonces. Es lo primero del roadmap.
+- **El access token no se revoca.** Tras un logout o una reutilización detectada, el access token ya emitido sigue sirviendo hasta que vence (15 minutos). Lo que se corta es la renovación. Revocarlo al instante exigiría consultar la base en cada pedido o mantener una lista de tokens revocados.
+- **Una renovación duplicada cierra la sesión.** Dos canjes simultáneos del mismo refresh token (dos pestañas, un reintento mal hecho) se tratan como un robo. El cliente tiene que serializar las renovaciones.
 - **El rate limit es por IP, no por cuenta.** Un atacante con muchas IPs puede probar contraseñas contra una misma cuenta sin que el límite lo frene. Hace falta un contador de intentos fallidos por email.
 - **El registro revela si un email ya existe** (`409`). Es el comportamiento habitual sin verificación por email; el rate limit lo hace costoso de enumerar a escala.
 - **La IP del cliente se asume confiable solo en Vercel.** Fuera de Vercel, quien llegue directo al servicio puede falsificar `x-real-ip`.
 - **Sin verificación de email, reset de contraseña ni 2FA.**
-- **Migraciones de Prisma:** `prisma/migrations` es el historial del esquema SQLite original y no corresponde al esquema actual en PostgreSQL; las tablas se crean con `prisma db push`.
-- **Los tests usan un Prisma falso en memoria**, no una base real: cubren la lógica de la API pero no el SQL real.
+- **Sin limpieza programada.** Los refresh tokens vencidos se borran cuando alguien inicia sesión; en un servicio con mucho tráfico conviene sumar una tarea periódica.
+- **Las pruebas de integración no corren contra la base de producción ni contra el servidor HTTP:** ejecutan los route handlers con Prisma y PostgreSQL reales (en CI y en local), pero no pasan por `next start`, el proxy ni Upstash.
 
 ---
 
 ## Testing
 
 ```bash
-npm test          # Vitest: tokens, secretos, rutas, roles, proxy y headers
-npm run typecheck # tsc --noEmit
+npm test                  # Vitest (unitarios): tokens, secretos, rutas, sesiones, roles, proxy y headers
+npm run test:integration  # Las rutas contra PostgreSQL real (necesita TEST_DATABASE_URL)
+npm run typecheck         # tsc --noEmit
 npm run lint
 ```
 
-Los tests ejecutan los route handlers reales con un Prisma falso en memoria. Cubren, entre otros: tokens con algoritmo, emisor o audiencia equivocados, secretos de ejemplo, admin degradado o eliminado, emails duplicados por mayúsculas, JSON roto, cuerpos gigantes, tiempo de respuesta del login, rate limiting y CORS.
+**Unitarios.** Ejecutan los route handlers reales con un Prisma falso en memoria. Cubren, entre otros: tokens con algoritmo, emisor o audiencia equivocados, secretos de ejemplo, admin degradado o eliminado, emails duplicados por mayúsculas, JSON roto, cuerpos gigantes, tiempo de respuesta del login, rate limiting y CORS, y todo el ciclo de sesiones (canje de un solo uso, reutilización, canjes simultáneos, rollback, vencimientos, límite de sesiones y logout).
+
+**Integración.** Los mismos route handlers con el cliente real de Prisma y una base PostgreSQL real, para lo que solo la base puede confirmar: el `UPDATE` condicional bajo concurrencia (8 canjes simultáneos del mismo token: gana exactamente uno), el rollback de la transacción cuando falla la emisión del token nuevo, la cascada al borrar un usuario, el índice único de email y la búsqueda sin distinguir mayúsculas. En CI corren contra un PostgreSQL 16 con las migraciones aplicadas desde cero y se verifica que el resultado coincida con `schema.prisma`.
+
+```bash
+# Con Docker (o cualquier PostgreSQL); la base tiene que llamarse "...test..." porque cada test la vacía
+docker run -d --name authapi-pg -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=authapi_test -p 5432:5432 postgres:16
+export DATABASE_URL="postgresql://postgres:ci@localhost:5432/authapi_test"
+export TEST_DATABASE_URL="$DATABASE_URL"
+npx prisma migrate deploy
+npm run test:integration
+```
 
 ### Flujo manual completo
 
@@ -431,10 +473,21 @@ REFRESH=$(echo $REGISTER | jq -r '.refreshToken')
 curl http://localhost:3000/api/users/me \
   -H "Authorization: Bearer $ACCESS"
 
-# 3. Renovar tokens
-curl -X POST http://localhost:3000/api/auth/refresh \
+# 3. Renovar tokens (el refresh token anterior deja de servir)
+NEW=$(curl -s -X POST http://localhost:3000/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d "{\"refreshToken\":\"$REFRESH\"}")
+echo $NEW | jq -r '.refreshToken'
+
+# 4. Repetir el refresh token viejo: 401 y la sesión entera queda cerrada
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:3000/api/auth/refresh \
   -H "Content-Type: application/json" \
   -d "{\"refreshToken\":\"$REFRESH\"}"
+
+# 5. Cerrar la sesión (con un token vigente; acá ya quedó cerrada y responde igual: 204)
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:3000/api/auth/logout \
+  -H "Content-Type: application/json" \
+  -d "{\"refreshToken\":\"$(echo $NEW | jq -r '.refreshToken')\"}"
 ```
 
 ### Rate limiting
@@ -468,11 +521,22 @@ DATABASE_URL="postgresql://user:pass@host:5432/db?schema=public"
 
 ### Base de datos
 
-El schema ya usa PostgreSQL. Para crear las tablas en una base nueva:
+El schema usa PostgreSQL. En una base **nueva**, las migraciones crean todo:
 
 ```bash
-npx prisma db push
+npx prisma migrate deploy
 ```
+
+#### Base de datos existente
+
+Si la tabla `users` ya existe (por ejemplo se creó con `prisma db push` en una versión anterior), la migración `baseline` no se tiene que ejecutar: se marca como aplicada y recién después se aplica la que crea `refresh_tokens`.
+
+```bash
+npx prisma migrate resolve --applied 20261014120000_baseline
+npx prisma migrate deploy
+```
+
+> Hacelo con una conexión directa o con el *session pooler* de Supabase (puerto 5432), no con el pooler en modo transacción (6543): Prisma Migrate usa bloqueos que ese modo no soporta. Antes de tocar la base de producción, hacé un backup.
 
 ### Deploy en Vercel
 
@@ -486,18 +550,20 @@ vercel --prod
 - [ ] Secretos JWT generados con `openssl rand -base64 48` (dos distintos); la app no arranca con valores de ejemplo
 - [ ] `CORS_ORIGIN` apunta al dominio del frontend (nunca `*`)
 - [ ] Upstash Redis configurado para rate limiting distribuido (la memoria no se comparte entre instancias serverless)
-- [ ] `DATABASE_URL` apunta a PostgreSQL de producción
+- [ ] `DATABASE_URL` apunta a PostgreSQL de producción y las migraciones están aplicadas (`prisma migrate deploy`)
 - [ ] Deploy detrás de HTTPS (requerido por HSTS)
-- [ ] Al actualizar desde una versión anterior: los tokens ya emitidos dejan de ser válidos (no tienen emisor ni audiencia), así que todos los usuarios deben iniciar sesión de nuevo
+- [ ] Al actualizar desde una versión anterior: los tokens ya emitidos dejan de ser válidos (sin emisor ni audiencia, o sin fila en `refresh_tokens`), así que todos los usuarios deben iniciar sesión de nuevo
 
 ---
 
 ## Roadmap
 
-- [ ] Rotación real de refresh tokens: invalidar el anterior, detectar reutilización y logout explícito
+- [x] Rotación real de refresh tokens: un solo uso, detección de reutilización, logout y tope de sesiones
 - [x] Roles y permisos (RBAC) — `USER` y `ADMIN`
 - [x] Tests automatizados (Vitest, con Prisma falso en memoria)
-- [ ] Tests de integración contra una base PostgreSQL real
+- [x] Tests de integración contra una base PostgreSQL real (en CI)
+- [ ] Revocación inmediata de access tokens (lista de revocados o `tokenVersion` por usuario)
+- [ ] Limpieza programada de refresh tokens vencidos
 - [ ] Límite de intentos fallidos por cuenta
 - [ ] Verificación de email al registrarse
 - [ ] Reset de contraseña por email
@@ -516,8 +582,9 @@ vercel --prod
 | `npm run start` | Servidor de producción |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | TypeScript sin emitir |
-| `npm test` | Tests (Vitest) |
-| `npx prisma db push` | Crear/actualizar las tablas desde el schema |
+| `npm test` | Tests unitarios (Vitest) |
+| `npm run test:integration` | Tests de integración contra PostgreSQL real |
+| `npx prisma migrate deploy` | Aplicar las migraciones pendientes |
 | `npx prisma studio` | GUI de la base de datos |
 
 ---
