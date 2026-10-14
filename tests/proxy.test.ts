@@ -61,9 +61,9 @@ describe('rate limiting de /api/auth/*', () => {
     expect(statuses.filter((s) => s === 429).length).toBe(35);
   });
 
-  it('login, registro y refresh comparten el mismo contador por IP', async () => {
+  it('login, registro, refresh y logout comparten el mismo contador por IP', async () => {
     const proxy = await loadProxy();
-    const paths = ['/api/auth/register', '/api/auth/login', '/api/auth/refresh', '/api/auth/login', '/api/auth/refresh', '/api/auth/login'];
+    const paths = ['/api/auth/register', '/api/auth/login', '/api/auth/refresh', '/api/auth/logout', '/api/auth/refresh', '/api/auth/login'];
     const statuses: number[] = [];
     for (const path of paths) statuses.push((await proxy(req(path, { headers: { 'x-real-ip': '192.0.2.5' } }))).status);
     expect(statuses[5]).toBe(429);

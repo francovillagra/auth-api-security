@@ -69,13 +69,15 @@ export function generateAccessToken(payload: TokenPayload): string {
 }
 
 /**
- * Issues a long-lived refresh token (7 days). Lleva un `jti` único: dos tokens emitidos
+ * Issues a long-lived refresh token (7 days by default). Lleva un `jti` único: dos tokens emitidos
  * en el mismo segundo nunca son idénticos y cada uno se puede identificar y revocar.
+ * Con `expiresAt` el vencimiento lo fija quien llama (lo usa la sesión para no pasar de su tope absoluto).
  */
-export function generateRefreshToken(payload: TokenPayload, jti: string = randomUUID()): string {
-  return jwt.sign(accessClaims(payload), SECRETS.refresh, {
+export function generateRefreshToken(payload: TokenPayload, jti: string = randomUUID(), expiresAt?: Date): string {
+  const claims = expiresAt ? { ...accessClaims(payload), exp: Math.floor(expiresAt.getTime() / 1000) } : accessClaims(payload);
+  return jwt.sign(claims, SECRETS.refresh, {
     algorithm: ALGORITHM,
-    expiresIn: '7d',
+    ...(expiresAt ? {} : { expiresIn: '7d' as const }),
     issuer: ISSUER,
     audience: audience('refresh'),
     subject: payload.userId,
