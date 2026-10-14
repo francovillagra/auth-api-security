@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Las pruebas de integración necesitan PostgreSQL: se corren aparte (npm run test:integration).
+    exclude: ['tests/integration/**', 'node_modules/**'],
     setupFiles: ['tests/helpers/setup.ts'],
     // lib/auth.ts valida los secretos al importarse: se definen antes de cargar cualquier módulo.
     env: {
