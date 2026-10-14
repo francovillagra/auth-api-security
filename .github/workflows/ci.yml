@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, tipos, tests y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Valores de prueba solo para este job (no son secretos reales): la app valida los
+      # secretos JWT al importarse y se niega a arrancar sin ellos.
+      JWT_SECRET: ci-access-Qm9x7Lk2VdP4wT8nZc1RbYh6SfJ3uAe5GoXiNvKt0
+      JWT_REFRESH_SECRET: ci-refresh-f3Gz9WqLp2XnC7vBk1RtYh8JdSa5UeMoAi4NxKw6
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx next build
+
+  audit:
+    name: Avisos de seguridad en dependencias de producción
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm audit --omit=dev --audit-level=high
