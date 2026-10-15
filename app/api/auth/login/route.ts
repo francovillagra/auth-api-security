@@ -1,37 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { verifyPassword, generateAccessToken, generateRefreshToken } from '@/lib/auth';
+import { verifyPasswordConstantTime, generateAccessToken } from '@/lib/auth';
+import { startSession } from '@/lib/refresh-tokens';
+import { parseJsonBody } from '@/lib/http';
 import { loginSchema } from '@/lib/validations';
+import { findUserByEmail } from '@/lib/users';
 import { log } from '@/lib/logger';
 import { withLogging } from '@/lib/request-logger';
 
 async function handler(req: NextRequest) {
-  const body = await req.json();
-  const result = loginSchema.safeParse(body);
+  const parsed = await parseJsonBody(req, loginSchema);
+  if (!parsed.ok) return parsed.response;
 
-  if (!result.success) {
-    return NextResponse.json(
-      { error: 'Validation failed', details: result.error.flatten().fieldErrors },
-      { status: 400 }
-    );
-  }
+  const { email, password } = parsed.data;
 
-  const { email, password } = result.data;
+  const user = await findUserByEmail(email);
 
-  const user = await prisma.user.findUnique({ where: { email } });
-
-  // Unified error message to prevent user enumeration
-  if (!user || !(await verifyPassword(password, user.password))) {
+  // Se compara SIEMPRE contra un hash (el del usuario o uno falso) para que el tiempo de
+  // respuesta no delate si el email existe, y se devuelve el mismo mensaje en ambos casos.
+  const passwordMatches = await verifyPasswordConstantTime(password, user?.password);
+  if (!user || !passwordMatches) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
   }
 
-  // role incluido en el payload — necesario para que requireRole() funcione
-  // sin tener que volver a consultar la DB en cada request protegido
+  // role incluido en el payload solo como dato informativo para el cliente: las rutas
+  // protegidas por rol vuelven a leerlo de la base (ver lib/rbac.ts).
   const payload = { userId: user.id, email: user.email, role: user.role };
   const accessToken = generateAccessToken(payload);
-  const refreshToken = generateRefreshToken(payload);
+  const refreshToken = await startSession(payload);
 
-  log.info(`User logged in: ${email}`);
+  log.info(`User logged in: ${user.id}`);
 
   return NextResponse.json({
     user: {

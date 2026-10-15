@@ -1,7 +1,5 @@
 import type { NextConfig } from 'next';
 
-const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '*';
-
 // Security headers equivalent to Helmet defaults
 const securityHeaders = [
   { key: 'X-DNS-Prefetch-Control',     value: 'off' },
@@ -29,14 +27,19 @@ const securityHeaders = [
   },
 ];
 
-const corsHeaders = [
-  { key: 'Access-Control-Allow-Origin',  value: CORS_ORIGIN },
-  { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
-  { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
-  { key: 'Access-Control-Max-Age',       value: '86400' },
+// La API devuelve solo JSON: no necesita cargar nada. Y las respuestas con tokens
+// nunca deben quedar en cachés (RFC 6749 §5.1).
+const apiHeaders = [
+  { key: 'Cache-Control', value: 'no-store' },
+  {
+    key: 'Content-Security-Policy',
+    value: "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  },
 ];
 
+// CORS se resuelve en proxy.ts (lista explícita de orígenes en CORS_ORIGIN).
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   async headers() {
     return [
       {
@@ -44,8 +47,9 @@ const nextConfig: NextConfig = {
         headers: securityHeaders,
       },
       {
+        // Va después de la regla general: para la misma clave gana la última.
         source: '/api/(.*)',
-        headers: corsHeaders,
+        headers: apiHeaders,
       },
     ];
   },

@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Next y su configuración de lint se actualizan juntos.
+      next:
+        patterns: ["next", "eslint-config-next"]
+    ignore:
+      # TypeScript 7 (compilador nativo) rompe el build de Next hoy; se reevalúa a mano.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

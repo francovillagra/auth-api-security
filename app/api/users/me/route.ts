@@ -19,7 +19,7 @@ async function handler(req: NextRequest) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  log.debug(`Profile fetched: ${user.email}`);
+  log.debug(`Profile fetched: ${user.id}`);
 
   return NextResponse.json({ user });
 }

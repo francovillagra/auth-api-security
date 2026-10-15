@@ -14,26 +14,35 @@ enum Role {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String?
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  scans     Scan[]
+  id            String         @id @default(uuid())
+  email         String         @unique
+  password      String
+  name          String?
+  role          Role           @default(USER)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  refreshTokens RefreshToken[]
 
   @@map("users")
 }
 
-model Scan {
-  id              String   @id @default(uuid())
-  url             String
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vulnerabilities Json
-  summary         Json
-  createdAt       DateTime @default(now())
+/// Un refresh token emitido. Solo se guarda el `jti` (que no es secreto: el token únicamente vale si
+/// lleva la firma del servidor), así que una filtración de la tabla no entrega tokens usables.
+model RefreshToken {
+  jti              String    @id
+  /// Todos los tokens que salen de un mismo inicio de sesión comparten familia y se revocan juntos.
+  familyId         String
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt        DateTime
+  /// Tope absoluto de la sesión: por más que se renueve, ningún token pasa de esta fecha.
+  sessionExpiresAt DateTime
+  /// null = vigente. Con fecha = ya canjeado por otro, cerrado con logout o desplazado por el límite de sesiones.
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
 
-  @@index([userId, createdAt])
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
