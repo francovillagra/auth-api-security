@@ -1,35 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { verifyRefreshToken, generateAccessToken, generateRefreshToken } from '@/lib/auth';
+import { generateAccessToken } from '@/lib/auth';
 import { parseJsonBody } from '@/lib/http';
+import { rotateRefreshToken } from '@/lib/refresh-tokens';
 import { refreshTokenSchema } from '@/lib/validations';
 import { log } from '@/lib/logger';
 import { withLogging } from '@/lib/request-logger';
 
+// Una sola respuesta para todo lo que no sea un refresh token vigente: firma inválida, desconocido,
+// vencido, ya usado o usuario eliminado. Quien llama no aprende nada sobre por qué falló.
 const INVALID = { error: 'Invalid or expired refresh token' };
 
 async function handler(req: NextRequest) {
   const parsed = await parseJsonBody(req, refreshTokenSchema);
   if (!parsed.ok) return parsed.response;
 
-  const payload = verifyRefreshToken(parsed.data.refreshToken);
-  if (!payload) {
+  const rotated = await rotateRefreshToken(parsed.data.refreshToken);
+  if (!rotated) {
     return NextResponse.json(INVALID, { status: 401 });
   }
 
-  // Confirm user still exists before issuing new tokens (y leer su rol actual)
-  const user = await prisma.user.findUnique({ where: { id: payload.userId } });
-  if (!user) {
-    return NextResponse.json(INVALID, { status: 401 });
-  }
+  log.info(`Tokens refreshed for: ${rotated.user.userId}`);
 
-  const newPayload = { userId: user.id, email: user.email, role: user.role };
-  const accessToken = generateAccessToken(newPayload);
-  const newRefreshToken = generateRefreshToken(newPayload);
-
-  log.info(`Tokens refreshed for: ${user.id}`);
-
-  return NextResponse.json({ accessToken, refreshToken: newRefreshToken });
+  return NextResponse.json({ accessToken: generateAccessToken(rotated.user), refreshToken: rotated.refreshToken });
 }
 
 export const POST = withLogging(handler);

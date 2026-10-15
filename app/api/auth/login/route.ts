@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyPasswordConstantTime, generateAccessToken, generateRefreshToken } from '@/lib/auth';
+import { verifyPasswordConstantTime, generateAccessToken } from '@/lib/auth';
+import { startSession } from '@/lib/refresh-tokens';
 import { parseJsonBody } from '@/lib/http';
 import { loginSchema } from '@/lib/validations';
 import { findUserByEmail } from '@/lib/users';
@@ -25,7 +26,7 @@ async function handler(req: NextRequest) {
   // protegidas por rol vuelven a leerlo de la base (ver lib/rbac.ts).
   const payload = { userId: user.id, email: user.email, role: user.role };
   const accessToken = generateAccessToken(payload);
-  const refreshToken = generateRefreshToken(payload);
+  const refreshToken = await startSession(payload);
 
   log.info(`User logged in: ${user.id}`);
 

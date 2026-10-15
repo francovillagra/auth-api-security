@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { hashPassword, generateAccessToken, generateRefreshToken } from '@/lib/auth';
+import { hashPassword, generateAccessToken } from '@/lib/auth';
+import { startSession } from '@/lib/refresh-tokens';
 import { parseJsonBody } from '@/lib/http';
 import { registerSchema } from '@/lib/validations';
 import { findUserByEmail, isUniqueViolation } from '@/lib/users';
@@ -35,7 +36,7 @@ async function handler(req: NextRequest) {
 
   const payload = { userId: user.id, email: user.email, role: user.role };
   const accessToken = generateAccessToken(payload);
-  const refreshToken = generateRefreshToken(payload);
+  const refreshToken = await startSession(payload);
 
   log.info(`User registered: ${user.id}`);
 

@@ -33,9 +33,19 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
+const refreshTokenField = z.string().min(1, 'Refresh token is required').max(2048, 'Refresh token too long');
+
 /** Refresh token rotation payload. */
 export const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required').max(2048, 'Refresh token too long'),
+  refreshToken: refreshTokenField,
 });
 
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
+
+/** Logout payload: el refresh token de la sesión y, opcionalmente, cerrar todas las sesiones del usuario. */
+export const logoutSchema = z.object({
+  refreshToken: refreshTokenField,
+  everywhere: z.boolean().optional(),
+});
+
+export type LogoutInput = z.infer<typeof logoutSchema>;

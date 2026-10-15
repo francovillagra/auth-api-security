@@ -39,6 +39,44 @@ jobs:
       - run: npm test
       - run: npx next build
 
+  integration:
+    name: Integración con PostgreSQL real
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: authapi_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d authapi_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Base descartable del servicio de arriba: las pruebas la vacían en cada test.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/authapi_test
+      TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/authapi_test
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      # Aplica las migraciones desde cero: si el SQL no se puede ejecutar, falla acá.
+      - run: npx prisma migrate deploy
+      # Compara la base resultante con schema.prisma: sale con error si las migraciones no reproducen el schema.
+      - run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - run: npm run test:integration
+
   audit:
     name: Avisos de seguridad en dependencias de producción
     runs-on: ubuntu-latest
