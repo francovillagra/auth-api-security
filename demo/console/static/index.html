@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Demo de Auth API Security</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M16 5l9 3.5v7c0 5.2-3.7 9.2-9 11.5-5.3-2.3-9-6.3-9-11.5v-7z' fill='none' stroke='%2358a6ff' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='M12 16l3 3 5-6' fill='none' stroke='%233fb950' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <div class="titles">
+        <h1>Demo de Auth API Security</h1>
+        <p class="lead">La API de inicio de sesión de una tienda, funcionando en esta computadora. Primero se usa como lo haría un cliente; después se la ataca con técnicas reales para ver cómo responde. Todo ocurre sobre cuentas de práctica y nada sale a internet.</p>
+      </div>
+      <p id="status" class="status" data-state="wait" role="status">Revisando el sistema…</p>
+    </header>
+
+    <div class="layout">
+      <div class="main">
+        <section aria-labelledby="part1-title">
+          <h2 id="part1-title" class="part">Parte 1. Usarla como un cliente</h2>
+          <ol id="steps" class="step-list"></ol>
+        </section>
+
+        <section aria-labelledby="part2-title">
+          <h2 id="part2-title" class="part">Parte 2. Atacarla</h2>
+          <p class="part-lead">Cada botón lanza un ataque real contra la API de práctica y muestra qué contestó. El veredicto sale de sus respuestas: no está escrito de antemano.</p>
+          <ul id="attacks" class="cards"></ul>
+        </section>
+
+        <section aria-labelledby="part3-title">
+          <h2 id="part3-title" class="part">Parte 3. Lo que todavía no cubre</h2>
+          <p class="part-lead">Una revisión de seguridad también dice lo que falta y cómo cerrarlo. Estos dos puntos figuran en «Limitaciones conocidas» del README del proyecto y se pueden reproducir acá.</p>
+          <ul id="limits" class="cards"></ul>
+        </section>
+      </div>
+
+      <div class="side">
+        <section class="panel" aria-labelledby="actors-title">
+          <h2 id="actors-title">Quién es quién</h2>
+          <ul id="actors" class="actor-list"></ul>
+        </section>
+
+        <section class="panel scroll" aria-labelledby="events-title">
+          <h2 id="events-title">Lo que va pasando</h2>
+          <ol id="events" class="log" aria-live="polite">
+            <li class="empty">Todavía no pasó nada. Empezar por el paso 1.</li>
+          </ol>
+        </section>
+
+        <section class="panel scroll" aria-labelledby="slog-title">
+          <h2 id="slog-title">Lo que registra la API</h2>
+          <p class="muted small">El registro real que escribe el servidor. Identifica a las personas por número, nunca por correo, y no incluye contraseñas ni llaves.</p>
+          <ol id="serverlog" class="slog">
+            <li class="empty">Todavía no hay movimiento.</li>
+          </ol>
+        </section>
+      </div>
+    </div>
+
+    <footer>
+      <p>Simulación controlada con datos de práctica. Los correos terminan en <span class="mono">.test</span>, un dominio reservado para pruebas que no existe en internet. Las direcciones desde las que «llaman» el cliente, la administración y los atacantes son de los bloques que RFC 5737 reserva para documentación. El código de esta demo está en la carpeta <span class="mono">demo/</span> del repositorio.</p>
+      <p><button id="reset" type="button" class="link">Reiniciar el recorrido</button></p>
+    </footer>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>

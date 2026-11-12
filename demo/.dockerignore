@@ -1,0 +1,7 @@
+# Contexto de tools.Dockerfile (la carpeta demo/): solo entra lo que usa esa imagen.
+**
+!common.py
+!init.py
+!console
+**/__pycache__
+**/*.pyc

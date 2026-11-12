@@ -83,6 +83,7 @@ auth-api-security/
 │
 ├── tests/                           # Vitest: tokens, secretos, rutas, sesiones, proxy y headers (Prisma falso)
 │   └── integration/                 # Las mismas rutas contra PostgreSQL real (npm run test:integration)
+├── demo/                            # Demo local con Docker: esta API + una consola guiada para usarla y atacarla (ver "Demo local")
 ├── proxy.ts                         # Proxy de Next (Node.js): rate limiting, guardia de /api/users y CORS
 ├── next.config.ts                   # Security headers
 └── .env                             # Variables de entorno (no commiteado)
@@ -502,6 +503,20 @@ for i in $(seq 1 10); do
 done
 # Requests 1-5: 401 | Requests 6-10: 429
 ```
+
+---
+
+## Demo local
+
+La carpeta [`demo/`](demo/README.md) levanta esta misma API, sin cambios, con una base de datos de práctica y una **consola guiada** con botones. Primero se usa como lo haría un cliente de una tienda (crear la cuenta, ver el perfil, renovar y cerrar la sesión) y después se la ataca con técnicas reales para ver cómo responde: contraseñas a los golpes, robo de sesión, llaves falsas, un cliente que quiere ser administrador, cambio de rol en pleno uso y datos mal armados. Una tercera parte reproduce dos de las «Limitaciones conocidas» (el freno por dirección y la llave de acceso que sobrevive al cierre de sesión), con el mismo detalle que los ataques que la API frena.
+
+```bash
+cd demo
+docker compose up --build
+# después, abrir http://localhost:4200
+```
+
+Todo corre en la computadora local, en una red de Docker sin salida y con cuentas de práctica: la demo no ataca ni escanea nada ajeno. Cada veredicto sale de lo que la API contestó, y la prueba de humo (`python demo/tests/smoke.py`) avisa si el comportamiento cambia. Las pruebas de la demo (`python -m pytest demo/tests` y `node --test "demo/tests/*.test.mjs"`) son aparte de `npm test` y no corren en la integración continua.
 
 ---
 
