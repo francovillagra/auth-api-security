@@ -516,7 +516,7 @@ docker compose up --build
 # después, abrir http://localhost:4200
 ```
 
-Todo corre en la computadora local, en una red de Docker sin salida y con cuentas de práctica: la demo no ataca ni escanea nada ajeno. Cada veredicto sale de lo que la API contestó, y la prueba de humo (`python demo/tests/smoke.py`) avisa si el comportamiento cambia. Las pruebas de la demo (`python -m pytest demo/tests` y `node --test "demo/tests/*.test.mjs"`) son aparte de `npm test` y no corren en la integración continua.
+Todo corre en la computadora local, en una red de Docker sin salida y con cuentas de práctica: la demo no ataca ni escanea nada ajeno. Cada veredicto sale de lo que la API contestó, y la prueba de humo (`python demo/tests/smoke.py`) avisa si el comportamiento cambia. Las pruebas de la demo (`python -m pytest demo/tests` y `node --test "demo/tests/*.test.mjs"`) son aparte de `npm test` y no corren en la integración continua. Se verificó el 16/11/2026 en Linux (Docker Engine y Compose, en un servidor de GitHub Actions); **no se verificó en Docker Desktop (Windows ni macOS)**.
 
 ---
 
