@@ -1,0 +1,111 @@
+name: Verificación temporal de la demo en Docker
+
+# TEMPORAL. Comprueba, en un servidor Linux de GitHub, que la demo del PR #13 funciona de verdad en Docker: es la «Prueba de aceptación»
+# de demo/README.md. No forma parte del proyecto: la rama tmp/verificacion-docker-auth-api no se mergea y se borra al terminar.
+# Solo corre en esa rama, no usa secretos y no toca ningún sistema ajeno (la demo vive y muere dentro del servidor de GitHub).
+on:
+  push:
+    branches: [tmp/verificacion-docker-auth-api]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tmp-verificacion-docker
+  cancel-in-progress: true
+
+jobs:
+  demo-docker:
+    name: Demo en Docker (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Versiones
+        run: |
+          echo "::notice title=Entorno::$(docker version --format 'Docker Engine {{.Server.Version}}'), Compose $(docker compose version --short), $(python3 --version), Node $(node --version), $(. /etc/os-release; echo "$PRETTY_NAME")"
+
+      - name: Pruebas automáticas de la demo (no necesitan Docker)
+        id: auto
+        continue-on-error: true
+        run: |
+          pip install --quiet pytest pyyaml
+          python3 -m pytest demo/tests -q 2>&1 | tee /tmp/pytest.txt
+          echo "::notice title=pytest::$(tail -n 1 /tmp/pytest.txt)"
+          node --test "demo/tests/*.test.mjs" 2>&1 | tee /tmp/nodetest.txt
+          echo "::notice title=node --test::$(grep -E '^(ℹ|#) (tests|pass|fail)' /tmp/nodetest.txt | tr '\n' ' ' || true)"
+
+      - name: Construir y encender (docker compose up -d --build --wait)
+        id: up
+        working-directory: demo
+        run: |
+          start=$(date +%s)
+          docker compose up -d --build --wait --wait-timeout 900
+          echo "::notice title=Encendido::docker compose up -d --build --wait terminó bien en $(( $(date +%s) - start )) s"
+
+      - name: Estado de los servicios
+        id: estado
+        working-directory: demo
+        run: |
+          docker compose ps -a
+          python3 ../.github/tmp-verificacion/checks.py estado
+
+      - name: Prueba de humo (17 pasos contra la API verdadera)
+        id: humo
+        run: |
+          python3 demo/tests/smoke.py 2>&1 | tee /tmp/humo.txt
+          echo "::notice title=Prueba de humo::$(tail -n 1 /tmp/humo.txt)"
+
+      - name: Comprobaciones de seguridad
+        id: seguridad
+        working-directory: demo
+        run: python3 ../.github/tmp-verificacion/checks.py seguridad
+
+      - name: Recorrido en el navegador (Chrome)
+        id: navegador
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/ui
+          cd /tmp/ui
+          npm init -y >/dev/null
+          npm install --silent playwright-core@1.63.0
+          cp "$GITHUB_WORKSPACE/.github/tmp-verificacion/ui-check.mjs" .
+          node ui-check.mjs
+
+      - name: Si algo falló, registros de cada servicio
+        if: failure()
+        working-directory: demo
+        run: |
+          docker compose logs --tail 60 --no-color 2>&1 | tee /tmp/compose-logs.txt | tail -n 150
+          echo "::error title=Registros de Docker Compose::$(tail -n 25 /tmp/compose-logs.txt | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## Verificación temporal de la demo en Docker"
+            echo
+            echo "| Paso | Resultado |"
+            echo "|---|---|"
+            echo "| Pruebas automáticas de la demo | ${{ steps.auto.outcome }} |"
+            echo "| Encendido (compose up --build --wait) | ${{ steps.up.outcome }} |"
+            echo "| Estado de los servicios | ${{ steps.estado.outcome }} |"
+            echo "| Prueba de humo (17 pasos) | ${{ steps.humo.outcome }} |"
+            echo "| Comprobaciones de seguridad | ${{ steps.seguridad.outcome }} |"
+            echo "| Recorrido en el navegador | ${{ steps.navegador.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Resumen::auto=${{ steps.auto.outcome }} encendido=${{ steps.up.outcome }} estado=${{ steps.estado.outcome }} humo=${{ steps.humo.outcome }} seguridad=${{ steps.seguridad.outcome }} navegador=${{ steps.navegador.outcome }}"
+
+      - name: Apagar
+        if: always()
+        working-directory: demo
+        run: docker compose down -v
