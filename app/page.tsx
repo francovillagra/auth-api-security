@@ -1,4 +1,4 @@
-const REPO_URL = "https://github.com/francovillagra/auth-api-security";
+const PORTFOLIO_URL = "https://francoverse.fvillagra-dev.workers.dev";
 
 const endpoints = [
   { method: "POST", path: "/api/auth/register", access: "Público", does: "Crea la cuenta y abre una sesión (access y refresh token)." },
@@ -49,9 +49,10 @@ export default function Home() {
           login. Todo se usa con <code className="font-mono text-base">curl</code> o desde tu propio frontend.
         </p>
         <p className="mt-4">
-          <a className="font-medium text-accent underline underline-offset-4" href={REPO_URL}>
-            Código, tests y documentación en GitHub
+          <a className="font-medium text-accent underline underline-offset-4" href={PORTFOLIO_URL}>
+            Detalle del proyecto y contacto en el portfolio
           </a>
+          . El código se comparte a pedido, bajo NDA.
         </p>
       </header>
 
@@ -116,12 +117,8 @@ export default function Home() {
           ))}
         </ul>
         <p className="mt-4 text-muted">
-          Lo que todavía no hace (verificación de email, reset de contraseña, 2FA, límite de intentos por cuenta) está listado
-          en la sección «Limitaciones conocidas» del{" "}
-          <a className="text-accent underline underline-offset-4" href={`${REPO_URL}#limitaciones-conocidas`}>
-            README
-          </a>
-          .
+          Lo que todavía no hace incluye la verificación de email, el reset de contraseña, el 2FA y el límite de intentos por
+          cuenta. La lista completa de limitaciones se entrega junto con el código, a pedido.
         </p>
       </section>
     </main>
