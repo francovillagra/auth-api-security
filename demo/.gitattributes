@@ -1,0 +1,2 @@
+# La demo corre dentro de contenedores Linux: se conserva el fin de línea LF aunque se clone en Windows.
+* text eol=lf

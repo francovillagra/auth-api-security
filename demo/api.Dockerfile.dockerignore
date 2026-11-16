@@ -1,0 +1,16 @@
+# Lista de lo único que se envía a Docker al construir la imagen de la API (api.Dockerfile). Todo lo demás se ignora:
+# node_modules, .next, .git, .env* y los archivos de la computadora de quien construye no llegan nunca a la imagen.
+**
+!package.json
+!package-lock.json
+!tsconfig.json
+!next.config.ts
+!postcss.config.mjs
+!proxy.ts
+!app
+!lib
+!prisma
+!demo/env.mjs
+!demo/seed.mjs
+!demo/setup.mjs
+!demo/launch.mjs

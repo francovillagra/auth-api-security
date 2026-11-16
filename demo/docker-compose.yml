@@ -1,0 +1,168 @@
+# Demo local de Auth API Security: la API real del proyecto, una base de datos de práctica y una consola guiada, todo en esta computadora,
+# con un solo comando.
+#
+#   cd demo
+#   docker compose up --build
+#
+# Después abrir la consola: http://localhost:4200 (los pasos y las pruebas están en demo/README.md).
+#
+# Qué hay de seguridad en esta demo:
+#   - La red "lab" no tiene salida: la API y la base no pueden hablar con internet ni con la red local. Los ataques de la consola
+#     solo pueden llegar a la API de práctica.
+#   - Solo la consola se publica, y solo en 127.0.0.1: nadie de la red local puede entrar. La API y la base no publican ningún puerto.
+#   - No hay credenciales en el repositorio: `init` las genera la primera vez en un volumen de Docker (ver init.py): la contraseña de la
+#     base, los dos secretos con que la API firma sus llaves y la contraseña de la cuenta de administración de práctica.
+#   - La base vive en memoria (tmpfs): cada vez que se enciende, empieza vacía y se carga con las cuentas de práctica.
+#   - Todo lo que se escribió para la demo corre sin root, sin privilegios extra y sin capacidades de Linux.
+name: auth-api-demo
+
+x-tools-build: &tools-build
+  context: .
+  dockerfile: tools.Dockerfile
+
+x-api-build: &api-build
+  # Se construye desde la raíz del repositorio: la imagen lleva la API tal cual está, sin cambios.
+  context: ..
+  dockerfile: demo/api.Dockerfile
+
+services:
+  # Genera credenciales y datos de práctica la primera vez (y no los toca después). Sin red. Termina enseguida.
+  init:
+    build: *tools-build
+    image: auth-api-demo-tools
+    user: root
+    command: ["python", "init.py"]
+    network_mode: none
+    read_only: true
+    volumes:
+      - demo_state:/run/demo
+      - demo_shared:/run/shared
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      # Solo lo necesario para dejar los archivos a nombre del usuario de la demo en los volúmenes.
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+
+  postgres:
+    image: postgres:16-alpine
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: authapi
+      POSTGRES_DB: authapi
+      POSTGRES_PASSWORD_FILE: /run/demo/postgres_password
+    volumes:
+      - demo_state:/run/demo:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks:
+      - lab
+    healthcheck:
+      # -h 127.0.0.1 a propósito: mientras la base se inicializa solo escucha por socket, y sin -h el chequeo daría "lista".
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U authapi -d authapi"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # Crea las tablas (prisma migrate deploy, las mismas migraciones del proyecto) y carga las cuentas de práctica. Termina enseguida.
+  setup:
+    build: *api-build
+    image: auth-api-demo-api
+    command: ["node", "demo/setup.mjs"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      HOME: /tmp
+    volumes:
+      - demo_state:/run/demo:ro
+    tmpfs:
+      - /tmp
+    networks:
+      - lab
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # La API de Auth API Security, tal cual está en el repositorio (next build + next start).
+  api:
+    build: *api-build
+    image: auth-api-demo-api
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      setup:
+        condition: service_completed_successfully
+    environment:
+      HOME: /tmp
+      PORT: "3000"
+    volumes:
+      - demo_state:/run/demo:ro
+      - demo_shared:/run/shared
+    tmpfs:
+      - /tmp
+      - /app/.next/cache:uid=1000,gid=1000
+    init: true
+    networks:
+      - lab
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      # La página de inicio de la API: no usa la base ni pasa por el proxy.
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+
+  # La consola guiada: la página con los botones. Arranca la última, cuando la API ya responde.
+  console:
+    build: *tools-build
+    image: auth-api-demo-tools
+    command: ["python", "console/server.py"]
+    init: true
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DEMO_API_URL: http://api:3000
+      DEMO_CONSOLE_PUBLIC_PORT: ${DEMO_CONSOLE_PORT:-4200}
+    volumes:
+      - demo_state:/run/demo:ro
+      - demo_shared:/run/shared:ro
+    networks:
+      - lab
+      - edge   # solo para poder publicar el puerto de la consola
+    ports:
+      - "127.0.0.1:${DEMO_CONSOLE_PORT:-4200}:8080"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+networks:
+  lab:
+    internal: true
+  edge: {}
+
+volumes:
+  demo_state:
+  demo_shared:
