@@ -591,4 +591,4 @@ vercel --prod
 
 ## Licencia
 
-MIT — libre para usar, modificar y distribuir.
+Todos los derechos reservados (ver [LICENSE](LICENSE)). El código se comparte a pedido y bajo acuerdo de confidencialidad, solo para consulta y evaluación.
